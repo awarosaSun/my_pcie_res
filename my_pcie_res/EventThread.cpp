@@ -1,16 +1,28 @@
 #include "EventThread.h"
 
+
+
+EventThread::EventThread()
+{
+
+}
+
+EventThread::~EventThread()
+{
+
+}
+
+
 void EventThread::run()
 {
 	
-	while (this->isplay == true)
+	qDebug() << "come into run";
+	if (this->isplay == true)
 	{
-		if (this->event_id == 0)
-			wait_for_event0();
-		else if (this->event_id == 1)
-			wait_for_event1();
+		qDebug() << "come into run_if";
 		emit sig_inform_disp();
+		this->isplay = false;
 	}
 
-	quit();
 }
+

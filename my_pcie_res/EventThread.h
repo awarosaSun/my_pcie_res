@@ -2,32 +2,24 @@
 
 #include "pcie_fun.h"
 #include <QThread>
+#include <QDebug>
 
-
-class EventThread:QThread
+class EventThread:public QThread
 {
-	/*Q_OBJECT
 
-
-protected:
-	void run()
-		Q_DECL_OVERRIDE;
-
-
-signals:*/
 	Q_OBJECT
 
-signals:
-		void sig_inform_disp();
-
 public:
-	volatile bool isplay;
-	volatile char event_id;
 	EventThread();
 	~EventThread();
+
+	volatile bool isplay;
+	//volatile char event_id;
+
 	void run();
 
-public slots:
+signals:
+	void sig_inform_disp();
 
 };
 

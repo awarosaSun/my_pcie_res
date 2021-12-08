@@ -1,6 +1,10 @@
 #include "MainWindow.h"
 #include <QMessageBox>
 #include "pcie_fun.h"
+#include <QCloseEvent>
+#include <QDebug>
+
+QT_CHARTS_USE_NAMESPACE
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -9,87 +13,110 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-
 	this->setWindowTitle(tr("My_Test_Wave(V1.01)"));
 
-	//setupRealtimeDataDemo(ui->qwtPlot);
+	createChart();
 
-	if (pcie_init() < 0)
-	{
-		QMessageBox::information(this, "ERROR", "pcie init error");
-		return;
-	}
+	connect(&eventThread, SIGNAL(sig_inform_disp()), this, SLOT(updataChart()));
 
-	connect(&pcie_c2h_event0, SIGNAL(sig_inform_disp()), this, SLOT(updatedataSlot()));
-	connect(&pcie_c2h_event1, SIGNAL(sig_inform_disp()), this, SLOT(updatedataSlot()));
+	//if (!eventThread.isRunning()) eventThread.start();
 
-	if (!pcie_c2h_event0.isRunning()) pcie_c2h_event0.start();
-	if (!pcie_c2h_event1.isRunning()) pcie_c2h_event1.start();
+	eventThread.isplay = false;
 
-	pcie_c2h_event0.isplay = true;
-	pcie_c2h_event1.isplay = true;
-	ad_cave = ((double)20.0) / 65536;
-
-	first_time = 1;
-	cnt = 0;
 }
+
+
 
 MainWindow::~MainWindow()
 {
-	pcie_c2h_event0.isplay = false;
-	pcie_c2h_event1.isplay = false;
+	eventThread.isplay = false;
 
-	if (pcie_c2h_event0.isRunning())
+	if (eventThread.isRunning())
 	{
-		pcie_c2h_event0.terminate();
-		pcie_c2h_event0.wait();
+		eventThread.terminate();
+		eventThread.wait();
 	}
-	if (pcie_c2h_event1.isRunning())
-	{
-		pcie_c2h_event1.terminate();
-		pcie_c2h_event1.wait();
-	}
+
 	pcie_deinit();
 	delete ui;
 }
 
+void MainWindow::createChart()
+{
+	qDebug() << "come into create";
+	//创建图表的各个部件
+	QChart *chart = new QChart();
+	chart->setTitle(tr("simple curve"));
+	//    chart->setAcceptHoverEvents(true);
+	ui->chartView->setChart(chart);
+	ui->chartView->setRenderHint(QPainter::Antialiasing);//防止曲线变形，保持曲线圆滑
 
-//更新散点图
-void MainWindow::updatedataSlot() {
+	QLineSeries *series0 = new QLineSeries();
+	series0->setName("data curve");
 
-	double val1, val2;
-	//double val1,val2,val3,val4;
-	QString str;
-	if (cnt == 0)
-	{
+	curSeries = series0; //当前序列
 
-		c2h_transfer(16384, c2h_align_mem_tmp);
-		daq7606 *ptmp = (daq7606 *)c2h_align_mem_tmp;
-		buf = ptmp;
-		val1 = 0;
-		val2 = 0;
-		ydata.erase(ydata.begin(), ydata.begin() + 4096);
+	//线条样式设定
+	QPen    pen;
+	pen.setStyle(Qt::DotLine);//Qt::SolidLine, Qt::DashLine, Qt::DotLine, Qt::DashDotLine
+	pen.setWidth(2);
+	pen.setColor(Qt::red);
+	series0->setPen(pen); //折线序列的线条设置
+
+	pen.setStyle(Qt::SolidLine);//Qt::SolidLine, Qt::DashLine, Qt::DotLine, Qt::DashDotLine
+	pen.setColor(Qt::blue);
+
+	chart->addSeries(series0);
+
+	QValueAxis *axisX = new QValueAxis;
+	curAxis = axisX; //当前坐标轴
+	axisX->setRange(0, 10); //设置坐标轴范围
+	axisX->setLabelFormat("%.1f"); //标签格式
+	axisX->setTickCount(11); //主分隔个数
+	axisX->setMinorTickCount(4);
+	axisX->setTitleText("time(secs)"); //标题
+//    axisX->setGridLineVisible(false);
+
+	QValueAxis *axisY = new QValueAxis;
+	axisY->setRange(0, 20);
+	axisY->setTitleText("value");
+	axisY->setTickCount(5);
+	axisY->setLabelFormat("%.2f"); //标签格式
+//    axisY->setGridLineVisible(false);
+	axisY->setMinorTickCount(4);
+
+	chart->setAxisX(axisX, series0); //添加X坐标轴
+	chart->setAxisY(axisY, series0); //添加Y坐标轴
+
+	//以1为步长
+	maxSize = 10;
+	for (int i = 0; i < maxSize; i++) {
+		xdatas.append(i);
 	}
-
-	while (cnt <= 4095)
-	{
-		val1 = (buf->ad0)*ad_cave;
-		val2 = (buf->ad1)*ad_cave;
-		if (cnt == 0)
-		{
-			str = QString("%1 %2").arg("ad0 = ").arg(val1);
-			ui->label->setText(str);
-			str = QString("%1 %2").arg("ad1 = ").arg(val2);
-			ui->label_2->setText(str);
-		}
-
-		ydata.append(val2);
-		buf++;
-		cnt++;
-	}
-	cnt = 0;
-	curve->setSamples(xdata, ydata);
-	curve->attach(ui->qwtPlot);
-	ui->qwtPlot->replot();
 
 }
+
+void MainWindow::updataChart()
+{
+	qDebug() << "come into update";
+	//为序列生成数据
+	QLineSeries *series0 = (QLineSeries *)ui->chartView->chart()->series().at(0);
+
+	series0->clear(); //清除数据
+
+
+	for (int i = 0; i < maxSize; i++)
+	{
+		ydata = (double)(i*i / 10.0);
+		series0->append(xdatas.at(i), ydata);
+	}
+}
+
+
+void MainWindow::on_act_start_triggered()
+{
+	if (!eventThread.isRunning()) eventThread.start();
+	eventThread.isplay = true;
+	qDebug() << "update triggered";
+}
+
